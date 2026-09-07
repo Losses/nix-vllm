@@ -15,6 +15,7 @@ SEQS="${SEQS:-8}"
 GPU_MEM="${GPU_MEM:-0.90}"
 MTP="${MTP:-3}"
 PREFIX_CACHE="${PREFIX_CACHE:-1}"
+KV_CACHE_DTYPE="${KV_CACHE_DTYPE:-fp8}"
 TOOL_PARSER="${TOOL_PARSER:-qwen3_xml}"
 REASONING_PARSER="${REASONING_PARSER:-qwen3}"
 LOAD_FORMAT="${LOAD_FORMAT:-auto}"
@@ -34,6 +35,7 @@ while [[ $# -gt 0 ]]; do
       echo "  --ctx <len>                       Max context length (default: 262144)"
       echo "  --seqs <num>                      Max concurrent sequences (default: 8)"
       echo "  --gpu-mem <ratio>                 GPU memory utilization (default: 0.85)"
+      echo "  --kv-cache-dtype <dtype>          KV cache data type: fp8, auto, bfloat16 (default: fp8)"
       echo "  --kv-bytes <bytes>                Explicit KV cache size (e.g. 20g)"
       echo "  --mtp <num>                       Number of MTP speculative tokens (default: 3, 0 to disable)"
       echo "  --ple-cpu-offload <0|1>           Offload PLE n-gram table to host RAM (default: 1)"
@@ -62,6 +64,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --gpu-mem|--gpu-memory-utilization)
       GPU_MEM="$2"
+      shift 2
+      ;;
+    --kv-cache-dtype)
+      KV_CACHE_DTYPE="$2"
       shift 2
       ;;
     --kv-bytes|--kv-cache-memory-bytes)
@@ -166,7 +172,7 @@ exec "$VENV/bin/vllm" serve "$MODEL_DIR" \
   --max-num-batched-tokens 8192 \
   $CC \
   $AT_ARG \
-  --kv-cache-dtype auto \
+  --kv-cache-dtype "$KV_CACHE_DTYPE" \
   --enable-auto-tool-choice \
   --tool-call-parser "$TOOL_PARSER" \
   --reasoning-parser "$REASONING_PARSER" \

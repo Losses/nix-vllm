@@ -53,6 +53,12 @@ in {
       description = "Fraction of GPU memory to use.";
     };
 
+    kvCacheDtype = lib.mkOption {
+      type = lib.types.str;
+      default = "fp8";
+      description = "KV cache data type (fp8, auto, bfloat16).";
+    };
+
     kvCacheMemoryBytes = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = null;
@@ -114,6 +120,7 @@ in {
         MTP = toString cfg.mtp;
         PREFIX_CACHE = if cfg.enablePrefixCaching then "1" else "0";
         VLLM_PLE_CPU_OFFLOAD = if cfg.pleCpuOffload then "1" else "0";
+        KV_CACHE_DTYPE = cfg.kvCacheDtype;
       } // lib.optionalAttrs (cfg.kvCacheMemoryBytes != null) {
         KV_BYTES = cfg.kvCacheMemoryBytes;
       } // lib.optionalAttrs (cfg.pinPrompt != null) {
