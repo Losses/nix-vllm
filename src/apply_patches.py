@@ -187,6 +187,16 @@ def apply_all(vllm_dir, sp_dir):
     if os.path.exists(fla_cdh):
         edit_file(fla_cdh, "for num_warps in [2, 4]:", "for num_warps in [2]:  # Blackwell tl.dot race fix")
 
+    # 7. Single-GPU UniProcExecutor PLE worker spawn & ModelOpt scale parameter filter
+    from patch_ple_single_gpu import patch_uniproc_executor, patch_ple_layer
+    patch_uniproc_executor(vllm_dir)
+    patch_ple_layer(vllm_dir)
+
+    # 8. Remap qwen_sparse_attention -> full_attention in transformers configuration_utils
+    cu_py = os.path.join(sp_dir, "transformers/configuration_utils.py")
+    if os.path.exists(cu_py):
+        edit_file(cu_py, '"attention": "full_attention",', '"attention": "full_attention",\n    "qwen_sparse_attention": "full_attention",')
+
     print("==> All patches successfully processed!", file=sys.stderr)
 
 if __name__ == "__main__":

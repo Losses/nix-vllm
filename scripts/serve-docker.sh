@@ -2,16 +2,17 @@
 # Serve Qwen3.8-Flash-Next / Qwen4Exp in patched Docker container on Blackwell
 set -euo pipefail
 
-NAME="${NAME:-qwen-vllm}"
+NAME="${NAME:-vllm-quantum-schrodinger-blackwell-sm120-ple-offload-megalodon-x9000}"
 IMAGE="${IMAGE:-qwen-vllm-blackwell}"
 MODEL_DIR="${MODEL_DIR:-}"
 PORT="${PORT:-8000}"
 HOST="${HOST:-0.0.0.0}"
 CTX="${CTX:-131072}"
 SEQS="${SEQS:-8}"
-GPU_MEM="${GPU_MEM:-0.90}"
+GPU_MEM="${GPU_MEM:-0.93}"
 MTP="${MTP:-3}"
 PREFIX_CACHE="${PREFIX_CACHE:-1}"
+KV_CACHE_DTYPE="${KV_CACHE_DTYPE:-fp8}"
 TOOL_PARSER="${TOOL_PARSER:-qwen3_xml}"
 REASONING_PARSER="${REASONING_PARSER:-qwen3}"
 LOAD_FORMAT="${LOAD_FORMAT:-auto}"
@@ -28,10 +29,12 @@ while [[ $# -gt 0 ]]; do
       echo "  --model, --model-dir <path|repo>  Local directory or Hugging Face ID (e.g. nvidia/Qwen3.8-Flash-Next-NVFP4)"
       echo "  --port <port>                     Port to listen on (default: 8000)"
       echo "  --host <host>                     Host to bind (default: 0.0.0.0)"
+      echo "  --name <name>                     Container name (default: vllm-quantum-schrodinger-blackwell-sm120-ple-offload-megalodon-x9000)"
       echo "  --served-name <name>              API model name (default: qwen)"
       echo "  --ctx <len>                       Max context length (default: 262144)"
       echo "  --seqs <num>                      Max concurrent sequences (default: 8)"
-      echo "  --gpu-mem <ratio>                 GPU memory utilization (default: 0.85)"
+      echo "  --gpu-mem <ratio>                 GPU memory utilization (default: 0.93)"
+      echo "  --kv-cache-dtype <dtype>          KV cache data type: fp8, auto, bfloat16 (default: fp8)"
       echo "  --kv-bytes <bytes>                Explicit KV cache size (e.g. 20g)"
       echo "  --mtp <num>                       Number of MTP speculative tokens (default: 3)"
       echo "  -d, --detach                      Run container in background instead of foreground"
@@ -40,6 +43,10 @@ while [[ $# -gt 0 ]]; do
     -d|--detach)
       DETACH="1"
       shift
+      ;;
+    --name)
+      NAME="$2"
+      shift 2
       ;;
     --model-dir|--model)
       MODEL_DIR="$2"
@@ -63,6 +70,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --gpu-mem|--gpu-memory-utilization)
       GPU_MEM="$2"
+      shift 2
+      ;;
+    --kv-cache-dtype)
+      KV_CACHE_DTYPE="$2"
       shift 2
       ;;
     --kv-bytes|--kv-cache-memory-bytes)
@@ -139,8 +150,16 @@ HF_ENV+=(-e "HF_HOME=/root/.cache/huggingface")
 if [ -n "${HF_TOKEN:-}" ]; then
   HF_ENV+=(-e "HF_TOKEN=$HF_TOKEN")
 fi
+if docker ps -a --format '{{.Names}}' | grep -Eq "^${NAME}$"; then
+  echo ">> Removing existing container with name: $NAME"
+  docker rm -f "$NAME" >/dev/null 2>&1 || true
+fi
 
-docker rm -f "$NAME" >/dev/null 2>&1 || true
+CONFLICT_IDS=$(docker ps -q --filter "publish=${PORT}" 2>/dev/null || true)
+if [ -n "$CONFLICT_IDS" ]; then
+  echo ">> Port $PORT is occupied by container(s): $CONFLICT_IDS, removing to avoid collision..."
+  docker rm -f $CONFLICT_IDS >/dev/null 2>&1 || true
+fi
 
 DOCKER_FLAGS=(--device=nvidia.com/gpu=all --ipc=host --shm-size 16g -p "${PORT}:8000")
 [ -t 0 ] && [ -t 1 ] && DOCKER_FLAGS+=(-t)
@@ -164,7 +183,7 @@ CMD_ARGS=(
   $PC_ARG --enable-chunked-prefill --max-num-batched-tokens 8192
   $CC
   $AT_ARG
-  --kv-cache-dtype auto
+  --kv-cache-dtype "$KV_CACHE_DTYPE"
   --enable-auto-tool-choice --tool-call-parser "$TOOL_PARSER" --reasoning-parser "$REASONING_PARSER"
   "${PIN_ARG[@]}" "${SPEC[@]}"
   $EXTRA

@@ -59,3 +59,10 @@ RUN python3 /tmp/patch_mamba_align_split.py && rm /tmp/patch_mamba_align_split.p
 COPY src/patch_step_profile.py /tmp/patch_step_profile.py
 RUN python3 /tmp/patch_step_profile.py && rm /tmp/patch_step_profile.py
 
+# 10. single-GPU UniProcExecutor PLE worker spawn & ModelOpt scale parameter filter
+COPY src/patch_ple_single_gpu.py /tmp/patch_ple_single_gpu.py
+RUN python3 /tmp/patch_ple_single_gpu.py ${SP} && rm /tmp/patch_ple_single_gpu.py
+
+# 11. remap qwen_sparse_attention -> full_attention in transformers configuration_utils
+RUN python3 -c "import transformers; p = transformers.configuration_utils.__file__; c = open(p).read(); open(p, 'w').write(c.replace('\"attention\": \"full_attention\",', '\"attention\": \"full_attention\",\n    \"qwen_sparse_attention\": \"full_attention\",'))"
+
