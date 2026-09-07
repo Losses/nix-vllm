@@ -14,13 +14,28 @@ MTP="${MTP:-3}"
 PREFIX_CACHE="${PREFIX_CACHE:-1}"
 TOOL_PARSER="${TOOL_PARSER:-qwen3_xml}"
 REASONING_PARSER="${REASONING_PARSER:-qwen3}"
-LOAD_FORMAT="${LOAD_FORMAT:-fastsafetensors}"
+LOAD_FORMAT="${LOAD_FORMAT:-auto}"
 SERVED_NAME="${SERVED_NAME:-qwen}"
 EXTRA="${EXTRA:-}"
 
 # Parse CLI arguments if provided
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    -h|--help)
+      echo "Usage: $0 [OPTIONS]"
+      echo ""
+      echo "Options:"
+      echo "  --model, --model-dir <path|repo>  Local directory or Hugging Face ID (e.g. nvidia/Qwen3.8-Flash-Next-NVFP4)"
+      echo "  --port <port>                     Port to listen on (default: 8000)"
+      echo "  --host <host>                     Host to bind (default: 0.0.0.0)"
+      echo "  --served-name <name>              API model name (default: qwen)"
+      echo "  --ctx <len>                       Max context length (default: 262144)"
+      echo "  --seqs <num>                      Max concurrent sequences (default: 8)"
+      echo "  --gpu-mem <ratio>                 GPU memory utilization (default: 0.85)"
+      echo "  --kv-bytes <bytes>                Explicit KV cache size (e.g. 20g)"
+      echo "  --mtp <num>                       Number of MTP speculative tokens (default: 3)"
+      exit 0
+      ;;
     --model-dir|--model)
       MODEL_DIR="$2"
       shift 2
@@ -66,7 +81,8 @@ done
 
 if [ -z "$MODEL_DIR" ]; then
   echo "Error: MODEL_DIR is required!" >&2
-  echo "Usage: $0 --model-dir /path/to/checkpoint" >&2
+  echo "Usage: $0 --model <local-path-or-hf-repo-id>" >&2
+  echo "Example: $0 --model nvidia/Qwen3.8-Flash-Next-NVFP4" >&2
   exit 1
 fi
 
@@ -94,11 +110,32 @@ if [ -n "$PIN_PROMPT" ] && [ "${PREFIX_CACHE:-0}" = "1" ]; then
            --never-evict-kv-cache-max-fraction "${PIN_MAX_FRACTION:-0.25}")
 fi
 
+# Determine whether MODEL_DIR is a local directory or a Hugging Face model ID
+MOUNT_ARGS=()
+HF_CACHE_DIR="${HF_HOME:-${HOME}/.cache/huggingface}"
+mkdir -p "$HF_CACHE_DIR"
+MOUNT_ARGS+=(-v "$HF_CACHE_DIR:/root/.cache/huggingface")
+
+if [ -d "$MODEL_DIR" ]; then
+  # Local directory
+  TARGET_MODEL="/model"
+  MOUNT_ARGS+=(-v "$(realpath "$MODEL_DIR"):$TARGET_MODEL:ro")
+else
+  # Hugging Face repo ID (e.g. nvidia/Qwen3.8-Flash-Next-NVFP4)
+  TARGET_MODEL="$MODEL_DIR"
+fi
+
+HF_ENV=()
+if [ -n "${HF_TOKEN:-}" ]; then
+  HF_ENV+=(-e "HF_TOKEN=$HF_TOKEN")
+fi
+
 docker rm -f "$NAME" >/dev/null 2>&1 || true
 
 docker run -d --name "$NAME" --restart unless-stopped \
   --device=nvidia.com/gpu=all --ipc=host --shm-size 16g -p "${PORT}:8000" \
-  -v "$MODEL_DIR:/model:ro" \
+  "${MOUNT_ARGS[@]}" \
+  "${HF_ENV[@]}" \
   -e VLLM_MARLIN_USE_ATOMIC_ADD=1 \
   -e VLLM_FP8_HYBRID="${FP8_HYBRID:-1}" \
   -e VLLM_USE_DEEP_GEMM=0 \
@@ -108,7 +145,7 @@ docker run -d --name "$NAME" --restart unless-stopped \
   -e VLLM_STEP_PROFILE="${STEP_PROFILE:-0}" \
   -e CUDA_LAUNCH_BLOCKING="${CUDA_LAUNCH_BLOCKING:-0}" \
   "$IMAGE" \
-  /model --served-model-name "$SERVED_NAME" \
+  "$TARGET_MODEL" --served-model-name "$SERVED_NAME" \
     --host 0.0.0.0 --port 8000 --load-format "$LOAD_FORMAT" \
     --max-model-len "$CTX" --max-num-seqs "$SEQS" --gpu-memory-utilization "$GPU_MEM" \
     $PC_ARG --enable-chunked-prefill --max-num-batched-tokens 8192 \
@@ -119,5 +156,5 @@ docker run -d --name "$NAME" --restart unless-stopped \
     "${PIN_ARG[@]}" "${SPEC[@]}" \
     $EXTRA
 
-echo ">> $NAME started on :$PORT (ctx $CTX, mtp=$MTP, seqs=$SEQS, gpu_mem=$GPU_MEM)"
+echo ">> $NAME started on :$PORT (model: $MODEL_DIR, ctx: $CTX, mtp: $MTP, seqs: $SEQS, gpu_mem: $GPU_MEM)"
 echo ">> Follow logs with: docker logs -f $NAME"

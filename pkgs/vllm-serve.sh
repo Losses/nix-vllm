@@ -6,16 +6,6 @@ VLLM_DIR="${VLLM_HOME:-$HOME/.local/share/nix-vllm}"
 VENV="$VLLM_DIR/venv"
 SETUP_CMD="${VLLM_SETUP_CMD:-vllm-setup}"
 
-if [ ! -d "$VENV" ] || [ ! -x "$VENV/bin/vllm" ]; then
-  echo "==> vLLM venv not found at $VENV. Automatically running setup..."
-  if command -v "$SETUP_CMD" >/dev/null 2>&1; then
-    "$SETUP_CMD"
-  else
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    "$SCRIPT_DIR/vllm-setup.sh"
-  fi
-fi
-
 MODEL_DIR="${MODEL_DIR:-}"
 PORT="${PORT:-8000}"
 HOST="${HOST:-0.0.0.0}"
@@ -27,12 +17,29 @@ MTP="${MTP:-3}"
 PREFIX_CACHE="${PREFIX_CACHE:-1}"
 TOOL_PARSER="${TOOL_PARSER:-qwen3_xml}"
 REASONING_PARSER="${REASONING_PARSER:-qwen3}"
-LOAD_FORMAT="${LOAD_FORMAT:-fastsafetensors}"
+LOAD_FORMAT="${LOAD_FORMAT:-auto}"
 EXTRA="${EXTRA:-}"
 
 # Parse CLI arguments if provided
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    -h|--help)
+      echo "Usage: vllm-serve [OPTIONS]"
+      echo ""
+      echo "Options:"
+      echo "  --model, --model-dir <path|repo>  Local directory or Hugging Face ID (e.g. nvidia/Qwen3.8-Flash-Next-NVFP4)"
+      echo "  --port <port>                     Port to listen on (default: 8000)"
+      echo "  --host <host>                     Host to bind (default: 0.0.0.0)"
+      echo "  --served-name <name>              API model name (default: qwen)"
+      echo "  --ctx <len>                       Max context length (default: 262144)"
+      echo "  --seqs <num>                      Max concurrent sequences (default: 8)"
+      echo "  --gpu-mem <ratio>                 GPU memory utilization (default: 0.85)"
+      echo "  --kv-bytes <bytes>                Explicit KV cache size (e.g. 20g)"
+      echo "  --mtp <num>                       Number of MTP speculative tokens (default: 3, 0 to disable)"
+      echo "  --ple-cpu-offload <0|1>           Offload PLE n-gram table to host RAM (default: 1)"
+      echo "  --prefix-cache <0|1>              Enable prefix caching (default: 1)"
+      exit 0
+      ;;
     --model-dir|--model)
       MODEL_DIR="$2"
       shift 2
@@ -69,6 +76,14 @@ while [[ $# -gt 0 ]]; do
       SERVED_NAME="$2"
       shift 2
       ;;
+    --ple-cpu-offload)
+      VLLM_PLE_CPU_OFFLOAD="$2"
+      shift 2
+      ;;
+    --prefix-cache)
+      PREFIX_CACHE="$2"
+      shift 2
+      ;;
     *)
       EXTRA="$EXTRA $1"
       shift
@@ -76,10 +91,20 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if [ ! -d "$VENV" ] || [ ! -x "$VENV/bin/vllm" ]; then
+  echo "==> vLLM venv not found at $VENV. Automatically running setup..."
+  if command -v "$SETUP_CMD" >/dev/null 2>&1; then
+    "$SETUP_CMD"
+  else
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    "$SCRIPT_DIR/vllm-setup.sh"
+  fi
+fi
+
 if [ -z "$MODEL_DIR" ]; then
   echo "Error: MODEL_DIR is not specified!" >&2
-  echo "Usage: vllm-serve --model-dir /path/to/model-checkpoint [OPTIONS]" >&2
-  echo "Or set MODEL_DIR environment variable." >&2
+  echo "Usage: vllm-serve --model <local-path-or-hf-repo-id>" >&2
+  echo "Example: vllm-serve --model nvidia/Qwen3.8-Flash-Next-NVFP4" >&2
   exit 1
 fi
 
@@ -125,6 +150,7 @@ export CUDA_LAUNCH_BLOCKING="${CUDA_LAUNCH_BLOCKING:-0}"
 echo ">> Starting vLLM server on ${HOST}:${PORT}"
 echo ">> Model: $MODEL_DIR (served as: $SERVED_NAME)"
 echo ">> Context: $CTX, MTP: $MTP, Seqs: $SEQS, GPU Mem: $GPU_MEM"
+echo ">> PLE CPU Offload: $VLLM_PLE_CPU_OFFLOAD (1 = pinned Host RAM offload)"
 
 exec "$VENV/bin/vllm" serve "$MODEL_DIR" \
   --served-model-name "$SERVED_NAME" \
