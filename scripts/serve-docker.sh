@@ -117,18 +117,12 @@ fi
 
 # Determine whether MODEL_DIR is a local directory or a Hugging Face model ID
 MOUNT_ARGS=()
+# Resolve Hugging Face cache directory from user environment ($HF_HOME or default ~/.cache/huggingface)
+# realpath ensures any user symlinks (e.g. ~/.cache/huggingface -> /ai/huggingface) resolve transparently
 HF_CACHE_DIR="${HF_HOME:-${HOME}/.cache/huggingface}"
-if [ ! -e "$HF_CACHE_DIR" ] && [ -d "/ai/huggingface" ]; then
-  HF_CACHE_DIR="/ai/huggingface"
-fi
+mkdir -p "$HF_CACHE_DIR"
 REAL_HF_CACHE="$(realpath "$HF_CACHE_DIR")"
-mkdir -p "$REAL_HF_CACHE"
 MOUNT_ARGS+=(-v "$REAL_HF_CACHE:/root/.cache/huggingface")
-
-# If /ai directory exists on host, mount it so direct /ai paths also resolve
-if [ -d "/ai" ]; then
-  MOUNT_ARGS+=(-v "/ai:/ai")
-fi
 
 if [ -d "$MODEL_DIR" ]; then
   # Local directory: mount directly and reference container path
