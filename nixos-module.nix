@@ -37,26 +37,26 @@ in {
 
     contextLength = lib.mkOption {
       type = lib.types.int;
-      default = 262144;
+      default = 131072;
       description = "Maximum context length.";
     };
 
     maxNumSeqs = lib.mkOption {
       type = lib.types.int;
-      default = 8;
+      default = 2;
       description = "Maximum concurrent sequences.";
     };
 
     gpuMemoryUtilization = lib.mkOption {
       type = lib.types.str;
-      default = "0.85";
+      default = "0.95";
       description = "Fraction of GPU memory to use.";
     };
 
     kvCacheDtype = lib.mkOption {
       type = lib.types.str;
-      default = "fp8";
-      description = "KV cache data type (fp8, auto, bfloat16).";
+      default = "auto";
+      description = "KV cache data type (auto, bfloat16).";
     };
 
     kvCacheMemoryBytes = lib.mkOption {
