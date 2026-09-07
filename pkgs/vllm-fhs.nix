@@ -73,6 +73,18 @@ let
     exec ${fhsBase}/bin/vllm-fhs-env ${vllmSmokeTestScript} "$@"
   '';
 
+  hfWrapperScript = ./hf-wrapper.sh;
+
+  hfBin = writeShellScriptBin "hf" ''
+    export VLLM_HF_CMD="hf"
+    exec ${fhsBase}/bin/vllm-fhs-env ${hfWrapperScript} "$@"
+  '';
+
+  hfCliBin = writeShellScriptBin "huggingface-cli" ''
+    export VLLM_HF_CMD="huggingface-cli"
+    exec ${fhsBase}/bin/vllm-fhs-env ${hfWrapperScript} "$@"
+  '';
+
   vllmBin = writeShellScriptBin "vllm" ''
     VLLM_DIR="''${VLLM_HOME:-$HOME/.local/share/nix-vllm}"
     VENV="$VLLM_DIR/venv"
@@ -84,12 +96,14 @@ let
 
 in symlinkJoin {
   name = "vllm-blackwell";
-  paths = [ vllmServeBin vllmSetupBin vllmSmokeTestBin vllmBin fhsBase ];
+  paths = [ vllmServeBin vllmSetupBin vllmSmokeTestBin vllmBin hfBin hfCliBin fhsBase ];
   passthru = {
     fhs = fhsBase;
     setup = vllmSetupBin;
     serve = vllmServeBin;
     smokeTest = vllmSmokeTestBin;
+    hf = hfBin;
+    huggingface-cli = hfCliBin;
   };
   meta = with lib; {
     description = "vLLM with Qwen3.8-Flash-Next / Qwen4Exp optimizations on Blackwell / NixOS";

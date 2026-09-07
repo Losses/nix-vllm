@@ -34,7 +34,12 @@ while [[ $# -gt 0 ]]; do
       echo "  --gpu-mem <ratio>                 GPU memory utilization (default: 0.85)"
       echo "  --kv-bytes <bytes>                Explicit KV cache size (e.g. 20g)"
       echo "  --mtp <num>                       Number of MTP speculative tokens (default: 3)"
+      echo "  -d, --detach                      Run container in background instead of foreground"
       exit 0
+      ;;
+    -d|--detach)
+      DETACH="1"
+      shift
       ;;
     --model-dir|--model)
       MODEL_DIR="$2"
@@ -132,29 +137,62 @@ fi
 
 docker rm -f "$NAME" >/dev/null 2>&1 || true
 
-docker run -d --name "$NAME" --restart unless-stopped \
-  --device=nvidia.com/gpu=all --ipc=host --shm-size 16g -p "${PORT}:8000" \
-  "${MOUNT_ARGS[@]}" \
-  "${HF_ENV[@]}" \
-  -e VLLM_MARLIN_USE_ATOMIC_ADD=1 \
-  -e VLLM_FP8_HYBRID="${FP8_HYBRID:-1}" \
-  -e VLLM_USE_DEEP_GEMM=0 \
-  -e VLLM_USE_FLASHINFER_SAMPLER=1 \
-  -e VLLM_PLE_CPU_OFFLOAD="${VLLM_PLE_CPU_OFFLOAD:-1}" \
-  -e VLLM_HIT_DEBUG="${HIT_DEBUG:-0}" \
-  -e VLLM_STEP_PROFILE="${STEP_PROFILE:-0}" \
-  -e CUDA_LAUNCH_BLOCKING="${CUDA_LAUNCH_BLOCKING:-0}" \
-  "$IMAGE" \
-  "$TARGET_MODEL" --served-model-name "$SERVED_NAME" \
-    --host 0.0.0.0 --port 8000 --load-format "$LOAD_FORMAT" \
-    --max-model-len "$CTX" --max-num-seqs "$SEQS" --gpu-memory-utilization "$GPU_MEM" \
-    $PC_ARG --enable-chunked-prefill --max-num-batched-tokens 8192 \
-    $CC \
-    $AT_ARG \
-    --kv-cache-dtype auto \
-    --enable-auto-tool-choice --tool-call-parser "$TOOL_PARSER" --reasoning-parser "$REASONING_PARSER" \
-    "${PIN_ARG[@]}" "${SPEC[@]}" \
-    $EXTRA
+DOCKER_FLAGS=(--device=nvidia.com/gpu=all --ipc=host --shm-size 16g -p "${PORT}:8000")
+[ -t 0 ] && [ -t 1 ] && DOCKER_FLAGS+=(-t)
 
-echo ">> $NAME started on :$PORT (model: $MODEL_DIR, ctx: $CTX, mtp: $MTP, seqs: $SEQS, gpu_mem: $GPU_MEM)"
-echo ">> Follow logs with: docker logs -f $NAME"
+COMMON_ENV=(
+  -e VLLM_MARLIN_USE_ATOMIC_ADD=1
+  -e VLLM_FP8_HYBRID="${FP8_HYBRID:-1}"
+  -e VLLM_USE_DEEP_GEMM=0
+  -e VLLM_USE_FLASHINFER_SAMPLER=1
+  -e VLLM_PLE_CPU_OFFLOAD="${VLLM_PLE_CPU_OFFLOAD:-1}"
+  -e VLLM_HIT_DEBUG="${HIT_DEBUG:-0}"
+  -e VLLM_STEP_PROFILE="${STEP_PROFILE:-0}"
+  -e CUDA_LAUNCH_BLOCKING="${CUDA_LAUNCH_BLOCKING:-0}"
+  -e FLASHINFER_DISABLE_VERSION_CHECK=1
+)
+
+CMD_ARGS=(
+  "$TARGET_MODEL" --served-model-name "$SERVED_NAME"
+  --host 0.0.0.0 --port 8000 --load-format "$LOAD_FORMAT"
+  --max-model-len "$CTX" --max-num-seqs "$SEQS" --gpu-memory-utilization "$GPU_MEM"
+  $PC_ARG --enable-chunked-prefill --max-num-batched-tokens 8192
+  $CC
+  $AT_ARG
+  --kv-cache-dtype auto
+  --enable-auto-tool-choice --tool-call-parser "$TOOL_PARSER" --reasoning-parser "$REASONING_PARSER"
+  "${PIN_ARG[@]}" "${SPEC[@]}"
+  $EXTRA
+)
+
+if [ "${DETACH:-0}" = "1" ]; then
+  docker run -d --name "$NAME" --restart unless-stopped \
+    "${DOCKER_FLAGS[@]}" \
+    "${MOUNT_ARGS[@]}" \
+    "${HF_ENV[@]}" \
+    "${COMMON_ENV[@]}" \
+    "$IMAGE" \
+    "${CMD_ARGS[@]}"
+  echo ">> $NAME started in background on :$PORT"
+  echo ">> Follow logs with: docker logs -f $NAME"
+else
+  # Foreground mode: stream logs directly, stop and cleanup on Ctrl+C (SIGINT/SIGTERM)
+  cleanup() {
+    trap - INT TERM EXIT
+    echo ""
+    echo ">> Stopping $NAME..."
+    docker stop -t 5 "$NAME" >/dev/null 2>&1 || true
+    docker rm -f "$NAME" >/dev/null 2>&1 || true
+    exit 0
+  }
+  trap cleanup INT TERM EXIT
+
+  echo ">> Starting $NAME on :$PORT in foreground (Press Ctrl+C to stop)..."
+  docker run --rm -i --name "$NAME" \
+    "${DOCKER_FLAGS[@]}" \
+    "${MOUNT_ARGS[@]}" \
+    "${HF_ENV[@]}" \
+    "${COMMON_ENV[@]}" \
+    "$IMAGE" \
+    "${CMD_ARGS[@]}"
+fi

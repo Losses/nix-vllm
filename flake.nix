@@ -33,30 +33,42 @@
 
       in {
         packages = {
-          default = vllmFhs;
+          default = vllmFhs.serve;
+          serve = vllmFhs.serve;
           fhs = vllmFhs;
+          setup = vllmFhs.setup;
+          hf = vllmFhs.hf;
+          huggingface-cli = vllmFhs.huggingface-cli;
+          smoke-test = vllmFhs.smokeTest;
           docker = vllmDocker;
           docker-build = vllmDockerBuild;
-          setup = vllmFhs.setup;
-          serve = vllmFhs.serve;
-          smoke-test = vllmFhs.smokeTest;
         };
 
         apps = {
           default = {
             type = "app";
             program = "${vllmFhs.serve}/bin/vllm-serve";
-            meta.description = "Serve Qwen3.8-Flash-Next / Qwen4Exp with vLLM on Blackwell";
+            meta.description = "Serve vLLM natively in Nix FHS environment";
           };
           serve = {
             type = "app";
             program = "${vllmFhs.serve}/bin/vllm-serve";
-            meta.description = "Serve Qwen3.8-Flash-Next / Qwen4Exp with vLLM on Blackwell";
+            meta.description = "Serve vLLM natively in Nix FHS environment";
           };
           setup = {
             type = "app";
             program = "${vllmFhs.setup}/bin/vllm-setup";
-            meta.description = "Install vLLM nightly binary wheels with CUDA 13.0 and patches";
+            meta.description = "Bootstrap official vLLM nightly binary wheels with CUDA 13.0 and patches";
+          };
+          hf = {
+            type = "app";
+            program = "${vllmFhs.hf}/bin/hf";
+            meta.description = "Hugging Face CLI tool";
+          };
+          huggingface-cli = {
+            type = "app";
+            program = "${vllmFhs.huggingface-cli}/bin/huggingface-cli";
+            meta.description = "Hugging Face CLI tool";
           };
           smoke-test = {
             type = "app";
@@ -66,12 +78,12 @@
           docker = {
             type = "app";
             program = "${vllmDocker}/bin/vllm-docker-serve";
-            meta.description = "Run vLLM in patched Docker container";
+            meta.description = "Serve Qwen3.8-Flash-Next in Docker container with PLE CPU offload";
           };
           docker-build = {
             type = "app";
             program = "${vllmDockerBuild}/bin/vllm-docker-build";
-            meta.description = "Build patched Docker image";
+            meta.description = "Build Blackwell-patched Docker image";
           };
         };
 
@@ -91,10 +103,11 @@
             echo "  vLLM Qwen3.8-Flash-Next / Qwen4Exp (Blackwell / NixOS) Shell  "
             echo "================================================================"
             echo "Commands:"
-            echo "  vllm-setup        - Install/update official nightly binary wheels & patches"
-            echo "  vllm-serve        - Launch optimized vLLM server"
+            echo "  vllm-serve        - Launch vLLM server (Nix FHS native)"
+            echo "  vllm-docker-serve - Launch via Blackwell container (with PLE CPU offload)"
+            echo "  vllm-setup        - Install/update binary wheels & patches in venv"
+            echo "  hf / huggingface-cli - Hugging Face CLI (auth, download)"
             echo "  vllm-smoke-test   - Run API test request"
-            echo "  vllm-docker-serve - Launch via Docker container"
             echo "================================================================"
           '';
         };
