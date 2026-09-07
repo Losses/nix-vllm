@@ -49,7 +49,7 @@ in {
 
     gpuMemoryUtilization = lib.mkOption {
       type = lib.types.str;
-      default = "0.95";
+      default = "0.965";
       description = "Fraction of GPU memory to use.";
     };
 
