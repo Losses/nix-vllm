@@ -126,7 +126,7 @@ To run vLLM as a systemd service, add this flake to your `/etc/nixos/flake.nix`:
             enable = true;
             modelDir = "nvidia/Qwen3.8-Flash-Next-NVFP4";
             port = 8000;
-            mtp = 0;
+            mtp = 3;
             gpuMemoryUtilization = "0.85";
             pleCpuOffload = true;
           };

@@ -10,7 +10,7 @@ HOST="${HOST:-0.0.0.0}"
 CTX="${CTX:-131072}"
 SEQS="${SEQS:-8}"
 GPU_MEM="${GPU_MEM:-0.93}"
-MTP="${MTP:-0}"
+MTP="${MTP:-3}"
 PREFIX_CACHE="${PREFIX_CACHE:-1}"
 KV_CACHE_DTYPE="${KV_CACHE_DTYPE:-fp8}"
 TOOL_PARSER="${TOOL_PARSER:-qwen3_xml}"
@@ -36,7 +36,7 @@ while [[ $# -gt 0 ]]; do
       echo "  --gpu-mem <ratio>                 GPU memory utilization (default: 0.93)"
       echo "  --kv-cache-dtype <dtype>          KV cache data type: fp8, auto, bfloat16 (default: fp8)"
       echo "  --kv-bytes <bytes>                Explicit KV cache size (e.g. 20g)"
-      echo "  --mtp <num>                       Number of MTP speculative tokens (default: 0)"
+      echo "  --mtp <num>                       Number of MTP speculative tokens (default: 3, 0 to disable)"
       echo "  -d, --detach                      Run container in background instead of foreground"
       exit 0
       ;;
