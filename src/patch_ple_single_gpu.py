@@ -80,6 +80,44 @@ def patch_ple_layer(vllm_dir: str) -> bool:
     print(f"[+] Successfully patched ple_layer.py", file=sys.stderr)
     return True
 
+def patch_qwen3_8_ple_layer(vllm_dir: str) -> bool:
+    path = os.path.join(vllm_dir, "models", "qwen3_8_flash_next", "nvidia", "ple_layer.py")
+    if not os.path.exists(path):
+        return True
+
+    with open(path, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    if "shard_.weight" in content:
+        print(f"[=] qwen3_8_flash_next/nvidia/ple_layer.py already patched", file=sys.stderr)
+        return True
+
+    target = '            if name.startswith(shard_prefix) and name.endswith(".weight"):'
+    if target not in content:
+        print(f"[!] Target anchor not found in qwen3_8_flash_next/nvidia/ple_layer.py", file=sys.stderr)
+        return False
+
+    replacement = '''            if name in ("shard_.weight", "ngram_embedding.weight") or name.endswith(".shard_.weight"):
+                embedding = self.ngram_embedding
+                copy_ple_embedding_shard_(
+                    embedding.weight.data,
+                    loaded_weight,
+                    checkpoint_start=0,
+                    tp_start=embedding.shard_indices.org_vocab_start_index,
+                    tp_end=embedding.shard_indices.org_vocab_end_index,
+                )
+                loaded.add("ngram_embedding.weight")
+                continue
+            if name.startswith(shard_prefix) and name.endswith(".weight"):'''
+
+    new_content = content.replace(target, replacement, 1)
+    ast.parse(new_content)
+
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(new_content)
+    print(f"[+] Successfully patched qwen3_8_flash_next/nvidia/ple_layer.py", file=sys.stderr)
+    return True
+
 def main():
     target_dir = sys.argv[1] if len(sys.argv) > 1 else None
     if target_dir:
@@ -90,7 +128,8 @@ def main():
 
     ok1 = patch_uniproc_executor(vllm_dir)
     ok2 = patch_ple_layer(vllm_dir)
-    return 0 if (ok1 and ok2) else 1
+    ok3 = patch_qwen3_8_ple_layer(vllm_dir)
+    return 0 if (ok1 and ok2 and ok3) else 1
 
 if __name__ == "__main__":
     sys.exit(main())

@@ -10,9 +10,10 @@ HOST="${HOST:-0.0.0.0}"
 CTX="${CTX:-131072}"
 SEQS="${SEQS:-8}"
 GPU_MEM="${GPU_MEM:-0.93}"
-MTP="${MTP:-3}"
+MTP="${MTP:-0}"
 PREFIX_CACHE="${PREFIX_CACHE:-1}"
-KV_CACHE_DTYPE="${KV_CACHE_DTYPE:-fp8}"
+KV_CACHE_DTYPE="${KV_CACHE_DTYPE:-auto}"
+MOE_BACKEND="${MOE_BACKEND:-flashinfer_b12x}"
 TOOL_PARSER="${TOOL_PARSER:-qwen3_xml}"
 REASONING_PARSER="${REASONING_PARSER:-qwen3}"
 LOAD_FORMAT="${LOAD_FORMAT:-auto}"
@@ -34,9 +35,10 @@ while [[ $# -gt 0 ]]; do
       echo "  --ctx <len>                       Max context length (default: 131072)"
       echo "  --seqs <num>                      Max concurrent sequences (default: 8)"
       echo "  --gpu-mem <ratio>                 GPU memory utilization (default: 0.93)"
-      echo "  --kv-cache-dtype <dtype>          KV cache data type: fp8, auto, bfloat16 (default: fp8)"
+      echo "  --kv-cache-dtype <dtype>          KV cache data type: auto, bfloat16 (default: auto)"
+      echo "  --moe-backend <backend>           MoE backend: flashinfer_b12x, auto, etc. (default: flashinfer_b12x)"
       echo "  --kv-bytes <bytes>                Explicit KV cache size (e.g. 20g)"
-      echo "  --mtp <num>                       Number of MTP speculative tokens (default: 3, 0 to disable)"
+      echo "  --mtp <num>                       Number of MTP speculative tokens (default: 0)"
       echo "  -d, --detach                      Run container in background instead of foreground"
       exit 0
       ;;
@@ -74,6 +76,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --kv-cache-dtype)
       KV_CACHE_DTYPE="$2"
+      shift 2
+      ;;
+    --moe-backend)
+      MOE_BACKEND="$2"
       shift 2
       ;;
     --kv-bytes|--kv-cache-memory-bytes)
@@ -184,6 +190,7 @@ CMD_ARGS=(
   $CC
   $AT_ARG
   --kv-cache-dtype "$KV_CACHE_DTYPE"
+  --moe-backend "$MOE_BACKEND"
   --enable-auto-tool-choice --tool-call-parser "$TOOL_PARSER" --reasoning-parser "$REASONING_PARSER"
   "${PIN_ARG[@]}" "${SPEC[@]}"
   $EXTRA
